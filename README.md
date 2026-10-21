@@ -40,7 +40,7 @@ Before playing, check the GeoCoach status at the bottom left of GeoGuessr. It re
 - Play single-player no move or NMPZ normally. Moving games and multiplayer are excluded.
 - The extension samples the starting view, views after mouse/zoom/keyboard input settles, and periodic views while the round is active. It captures only the active GeoGuessr tab, crops to the Street View area, and skips exact duplicate images.
 - When a round ends, **Review** appears on GeoGuessr. It opens the localhost app with that game and round selected. You can also review all completed rounds after the game.
-- Explain your reasoning, ask what else was visible, or challenge the explanation. Each round has its own saved Codex conversation. New conversations start with up to six visually different captures chosen locally. The coach can request one extra batch of up to six unseen views, including on a later follow-up. Existing conversations that already received all views keep their original context.
+- Use **Get help**, **I knew the country. How can I improve?**, or **This was mostly luck. What did I miss?** to request a review without typing. These work on any completed round and preserve your unsent custom draft. You can also explain your reasoning, ask what else was visible, or challenge the explanation. Each round has its own saved Codex conversation. New conversations start with up to six visually different captures chosen locally. For each question, the coach can make up to two inspection passes, each requesting up to six unseen views or crops combined. A crop isolates an area of a view the coach has already seen, using the saved pixels without inventing new detail. Crop evidence stays separate from the gameplay gallery, and citations link to the original view. Crops are kept locally with the round and deleted with the game. Follow-up questions receive a fresh inspection budget. Inspection can add model usage and delay before the answer. Existing conversations that already received all views keep their original context.
 - New replies link their evidence to gallery views. Click a view citation to open that screenshot. All captures remain available in the gallery, whether or not they were sent to the coach.
 - Learnable Meta text, links, and example-image URLs are collected when available. The coach receives its text and links alongside your actual scene captures. Reference images can be expanded in the review UI. The coach does not automatically download or inspect those external reference images.
 
@@ -94,7 +94,7 @@ pnpm build
 pnpm test:codex
 ```
 
-`test:codex` makes two real subscription-backed calls using a synthetic blue triangle. It checks image input and conversation resumption. It is separate from the ordinary test suite so routine tests do not consume model usage.
+`test:codex` runs a real subscription-backed review of a synthetic blue triangle, requests a crop, then resumes the saved conversation to check image inspection and memory. It is separate from the ordinary test suite so routine tests do not consume model usage.
 
 Before considering capture verified, load the extension and play a real no-move game. Check the starting view, a panned view, an immediate guess, a tab switch, multiple rounds, optional Learnable Meta, and the final results. Verify round selection and context, then ask a follow-up in two different rounds to check conversation isolation.
 

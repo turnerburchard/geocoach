@@ -22,7 +22,7 @@ try {
 	});
 	const image = await sharp(
 		Buffer.from(
-			'<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="white"/><path d="M320 50 550 350 90 350Z" fill="blue"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="white"/><path d="M1000 550 1100 750 900 750Z" fill="blue"/></svg>',
 		),
 	)
 		.jpeg()
@@ -40,24 +40,32 @@ try {
 		store,
 		game,
 		round,
-		"This is a connection test, not a geography question. In one sentence, what shape and color are in the attached test image?",
+		'This is an image inspection integration test, not a geography question. Before answering, request a zoom of View 1 using region {"x":0.65,"y":0.6,"width":0.3,"height":0.35}. After receiving that crop, tell me the shape and color inside it in one sentence.',
 		() => {},
 	);
 	assert.equal(round.reviewStatus, "idle", round.error);
 	assert.match(round.messages.at(-1)?.text ?? "", /blue/i);
 	assert.match(round.messages.at(-1)?.text ?? "", /triangle/i);
 	assert.ok(round.threadId);
-	console.log("PASS: image input returned a blue triangle.");
+	assert.equal(round.coachImages?.crops?.length, 1);
+	assert.equal(round.captures.length, 1);
+	console.log(
+		"PASS: requested crop returned a blue triangle without adding a gallery view.",
+	);
+	const reloaded = new Store(root);
+	const savedGame = reloaded.game("connection-test");
+	const savedRound = reloaded.round("connection-test", 1);
+	if (!savedGame || !savedRound) throw new Error("Missing saved test round");
 	await review(
-		store,
-		game,
-		round,
-		"From the test image in my previous message, what color was the shape? Answer in one sentence.",
+		reloaded,
+		savedGame,
+		savedRound,
+		"From the cropped view you inspected in my previous message, what color was the shape? Answer in one sentence.",
 		() => {},
 	);
-	assert.equal(round.reviewStatus, "idle", round.error);
-	assert.match(round.messages.at(-1)?.text ?? "", /blue/i);
-	console.log("PASS: resumed conversation remembered the image.");
+	assert.equal(savedRound.reviewStatus, "idle", savedRound.error);
+	assert.match(savedRound.messages.at(-1)?.text ?? "", /blue/i);
+	console.log("PASS: saved conversation resumed and remembered the crop.");
 } finally {
 	await rm(root, { recursive: true, force: true });
 }

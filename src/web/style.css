@@ -282,6 +282,17 @@ form {
 	border-top: 1px solid #e9ecf0;
 	padding-top: 16px;
 }
+.review-prompts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 10px 0 14px;
+}
+.review-prompts button {
+	font-size: 12px;
+	text-align: left;
+}
+
 .chat form > button {
 	background: #333b46;
 	color: #fff;

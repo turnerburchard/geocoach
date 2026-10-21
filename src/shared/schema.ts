@@ -54,6 +54,18 @@ export const captureSchema = z.object({
 		})
 		.optional(),
 });
+export const cropRegionSchema = z.object({
+	x: z.number().min(0).max(1),
+	y: z.number().min(0).max(1),
+	width: z.number().positive().max(1),
+	height: z.number().positive().max(1),
+});
+export type CropRegion = z.infer<typeof cropRegionSchema>;
+export type CoachCrop = {
+	file: string;
+	sourceCaptureId: string;
+	region: CropRegion;
+};
 export type RoundUpdate = z.infer<typeof roundUpdateSchema>;
 export type CaptureInput = z.infer<typeof captureSchema>;
 export type Meta = z.infer<typeof metaSchema>;
@@ -77,7 +89,7 @@ export type Round = {
 	meta?: Meta;
 	messages: Message[];
 	threadId?: string;
-	coachImages?: { ids: string[]; expanded: boolean };
+	coachImages?: { ids: string[]; crops?: CoachCrop[] };
 	reviewStatus: "idle" | "running" | "error";
 	error?: string;
 };

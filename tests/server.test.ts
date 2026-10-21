@@ -258,7 +258,7 @@ process.stdin.resume();
 process.stdin.on('end', () => {
   const resumed = process.argv.includes('resume');
   console.log(JSON.stringify({type:'thread.started',thread_id:'test-thread-id'}));
-  console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:JSON.stringify({answer:resumed?'Follow-up remembered.':'First reply.',moreViews:[]})}}));
+  console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:JSON.stringify({answer:resumed?'Follow-up remembered.':'First reply.',inspect:[]})}}));
   console.log(JSON.stringify({type:'turn.completed'}));
 });
 `,
