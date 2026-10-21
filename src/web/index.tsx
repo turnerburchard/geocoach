@@ -432,6 +432,9 @@ function App() {
 								{round.result && (
 									<div className="locations">
 										<div>
+											Score: {round.result.score?.toLocaleString() ?? "—"} pts
+										</div>
+										<div>
 											Answer:{" "}
 											<a
 												href={`https://www.google.com/maps?q=${round.result.actual.lat},${round.result.actual.lng}`}

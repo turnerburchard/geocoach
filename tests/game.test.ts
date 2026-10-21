@@ -99,3 +99,20 @@ test("distance amounts respect the unit supplied by GeoGuessr", () => {
 	});
 	assert.equal(state?.completed[0].result.distanceMeters, 127900);
 });
+
+test("current GeoGuessr score fields preserve points, including zero", () => {
+	const state = parseGame({
+		...fixture,
+		round: 2,
+		player: {
+			guesses: [
+				{ lat: 43.6, lng: 1.4, roundScoreInPoints: 4430 },
+				{ lat: 0, lng: 0, roundScoreInPoints: 0 },
+			],
+		},
+	});
+	assert.deepEqual(
+		state?.completed.map((r) => r.result.score),
+		[4430, 0],
+	);
+});

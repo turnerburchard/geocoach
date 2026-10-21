@@ -23,6 +23,7 @@ const upstreamGame = z.object({
 				lat: z.number().optional(),
 				lng: z.number().optional(),
 				roundScore: z.object({ amount }).optional(),
+				roundScoreInPoints: z.number().int().min(0).max(5000).optional(),
 				distance: z
 					.object({
 						meters: z.object({ amount, unit: z.enum(["m", "km"]).optional() }),
@@ -62,7 +63,7 @@ export function parseGame(data: unknown): PageState | null {
 				typeof guess.lat === "number" && typeof guess.lng === "number"
 					? { lat: guess.lat, lng: guess.lng }
 					: null,
-			score: guess.roundScore?.amount ?? null,
+			score: guess.roundScoreInPoints ?? guess.roundScore?.amount ?? null,
 			distanceMeters: guess.distance
 				? guess.distance.meters.amount *
 					(guess.distance.meters.unit === "km" ? 1000 : 1)
