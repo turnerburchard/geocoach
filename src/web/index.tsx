@@ -15,6 +15,23 @@ const country = (code?: string) =>
 	code ? (countryNames.of(code.toUpperCase()) ?? code) : "";
 const coordinates = (point: { lat: number; lng: number }) =>
 	`${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`;
+const reviewPrompts = [
+	{
+		label: "Get help",
+		question:
+			"What did I miss in this round? Show me the strongest useful clues and how to recognize them next time.",
+	},
+	{
+		label: "I knew the country. How can I improve?",
+		question:
+			"I knew the country. How could I improve this guess? Focus on regional clues where the images support them.",
+	},
+	{
+		label: "This was mostly luck. What did I miss?",
+		question:
+			"My guess was mostly luck. What clues should I have used to recognize the country?",
+	},
+];
 const initialSelection = () => new URLSearchParams(location.hash.slice(1));
 
 function App() {
@@ -150,16 +167,16 @@ function App() {
 		);
 	}
 
-	async function send() {
-		if (!question.trim() || !game || !round?.result || running || sending)
+	async function send(message = question) {
+		if (!message.trim() || !game || !round?.result || running || sending)
 			return;
 		setSending(true);
 		setError("");
 		try {
 			await api(`/api/games/${game.id}/rounds/${round.number}/chat`, {
-				question,
+				question: message,
 			});
-			setQuestion("");
+			if (message === question) setQuestion("");
 			setGames(await api("/api/games"));
 		} catch (error) {
 			setError(error instanceof Error ? error.message : String(error));
@@ -507,6 +524,23 @@ function App() {
 										</p>
 									)}
 								</div>
+								<section
+									className="review-prompts"
+									aria-label="Quick review questions"
+								>
+									{reviewPrompts.map((prompt) => (
+										<button
+											key={prompt.label}
+											type="button"
+											disabled={!round.result || running || sending}
+											onClick={() => {
+												void send(prompt.question);
+											}}
+										>
+											{prompt.label}
+										</button>
+									))}
+								</section>
 								<form
 									onSubmit={(event) => {
 										event.preventDefault();

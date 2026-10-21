@@ -1,10 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
+import {
+	mkdtemp,
+	mkdir,
+	writeFile,
+	rm,
+	readFile,
+	readdir,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import sharp from "sharp";
-import { selectViews } from "../src/server/views";
+import { selectViews, cropView } from "../src/server/views";
 import { review } from "../src/server/coach";
 import { Store } from "../src/server/store";
 import type { Capture } from "../src/shared/schema";
@@ -75,8 +82,54 @@ test("initial selection caps distinct scenes at six and skips near-duplicate cap
 	}
 });
 
-test("coach requests one extra batch, preserves gallery numbering, and remembers its budget across restarts", async () => {
-	const root = await mkdtemp(join(tmpdir(), "geocoach-batches-"));
+test("zoom crops the requested source pixels and rejects regions outside the image", async () => {
+	const root = await mkdtemp(join(tmpdir(), "geocoach-crop-"));
+	try {
+		await mkdir(join(root, "images"));
+		const source = await sharp(
+			Buffer.from(
+				'<svg width="200" height="120"><rect width="100" height="120" fill="red"/><rect x="100" width="100" height="120" fill="blue"/></svg>',
+			),
+		)
+			.png()
+			.toBuffer();
+		await writeFile(join(root, "images", "source.png"), source);
+		const capture: Capture = {
+			id: "source",
+			file: "source.png",
+			capturedAt: "",
+			reason: "view",
+		};
+		const crop = await cropView(root, capture, {
+			x: 0.5,
+			y: 0,
+			width: 0.5,
+			height: 1,
+		});
+		const image = sharp(join(root, "images", crop.file));
+		const metadata = await image.metadata();
+		assert.equal(metadata.width, 100);
+		assert.equal(metadata.height, 120);
+		assert.deepEqual(
+			[...(await image.removeAlpha().raw().toBuffer()).subarray(0, 3)],
+			[0, 0, 255],
+		);
+		assert.deepEqual(
+			await readFile(join(root, "images", "source.png")),
+			source,
+		);
+		await assert.rejects(
+			cropView(root, capture, { x: 0.8, y: 0, width: 0.5, height: 1 }),
+			/outside/,
+		);
+		assert.equal((await readdir(join(root, "images"))).length, 2);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("coach inspects views and crops, resets the budget on follow-up, and preserves old conversations", async () => {
+	const root = await mkdtemp(join(tmpdir(), "geocoach-inspection-"));
 	const oldExecutable = process.env.GEOCOACH_CODEX;
 	try {
 		const store = new Store(root);
@@ -100,11 +153,19 @@ const fs = require('node:fs');
 let prompt = '';
 process.stdin.on('data', data => prompt += data);
 process.stdin.on('end', () => {
-  fs.appendFileSync('calls.jsonl', JSON.stringify({args:process.argv.slice(2),prompt})+'\\n');
+  const args = process.argv.slice(2);
+  const schema = JSON.parse(fs.readFileSync(args[args.indexOf('--output-schema')+1], 'utf8'));
+  fs.appendFileSync('calls.jsonl', JSON.stringify({args,prompt,schema})+'\\n');
   const available = JSON.parse(prompt.match(/Unseen views available: (.*)/)[1]);
   const seen = JSON.parse(prompt.match(/Views supplied to this conversation: (.*)/)[1]);
-  const ask = !process.argv.includes('resume') || prompt.includes('request-again');
-  const response = ask ? {answer:'',moreViews:available.slice(0,6)} : {answer:'Look at [View '+seen.at(-1)+'](#game=batch-test&round=1&view='+seen.at(-1)+').',moreViews:[]};
+  const remaining = Number(prompt.match(/Inspection passes remaining for this question: (.*)/)[1]);
+  const region = {x:0,y:0,width:0.5,height:0.5};
+  let inspect = [];
+  if (prompt.includes('unseen-zoom')) inspect = [{kind:'zoom',view:available[0],region}];
+  else if (prompt.includes('ignore-limit')) inspect = [{kind:'zoom',view:seen[0],region:{...region,x:remaining*0.1}}];
+  else if (remaining === 2 && available.length) inspect = available.slice(0,prompt.includes('Follow-up inspection')?1:6).map(view=>({kind:'view',view}));
+  else if (remaining === 1) inspect = [{kind:'zoom',view:seen[0],region}];
+  const response = {answer:inspect.length?'':'The crop of [View '+seen[0]+'](#game=batch-test&round=1&view='+seen[0]+') shows the clue.',inspect};
   console.log(JSON.stringify({type:'thread.started',thread_id:'batch-thread'}));
   console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:JSON.stringify(response)}}));
   console.log(JSON.stringify({type:'turn.completed'}));
@@ -118,26 +179,35 @@ process.stdin.on('end', () => {
 		await review(store, game, round, "What did I miss?", () => {});
 		assert.equal(round.reviewStatus, "idle", round.error);
 		assert.equal(round.coachImages?.ids.length, 12);
-		assert.equal(round.coachImages?.expanded, true);
+		assert.equal(round.coachImages?.crops?.length, 1);
+		assert.equal(round.captures.length, 14);
 		assert.equal(round.messages.length, 2);
 		assert.match(
 			round.messages[1].text,
 			/\[View \d+\]\(#game=batch-test&round=1&view=\d+\)/,
 		);
-		const calls = (await readFile(join(root, "coach", "calls.jsonl"), "utf8"))
-			.trim()
-			.split("\n")
-			.map((line) => JSON.parse(line));
-		assert.equal(calls.length, 2);
-		assert.equal(calls[0].args.filter((arg: string) => arg === "-i").length, 6);
-		assert.equal(calls[1].args.filter((arg: string) => arg === "-i").length, 6);
-		assert.equal(calls[1].args.includes("batch-thread"), true);
-		const attached = calls.flatMap((call) =>
-			call.args.filter(
-				(_: string, index: number) => call.args[index - 1] === "-i",
-			),
+		const calls = async () =>
+			(await readFile(join(root, "coach", "calls.jsonl"), "utf8"))
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line));
+		let log = await calls();
+		assert.equal(log.length, 3);
+		assert.deepEqual(
+			log.map((c) => c.args.filter((a: string) => a === "-i").length),
+			[6, 6, 1],
 		);
-		assert.equal(new Set(attached).size, 12);
+		assert.match(log[2].prompt, /Crop of original view/);
+		assert.equal(log[2].schema.properties.inspect.maxItems, 0);
+		assert.equal(
+			new Set(log.map((c) => c.args[c.args.indexOf("--output-schema") + 1]))
+				.size,
+			3,
+		);
+		assert.deepEqual(await readdir(join(root, "coach")), ["calls.jsonl"]);
+
+		Object.assign(round.coachImages ?? {}, { expanded: true });
+		store.save();
 		const reloaded = new Store(root);
 		const savedGame = reloaded.game("batch-test"),
 			savedRound = reloaded.round("batch-test", 1);
@@ -146,24 +216,32 @@ process.stdin.on('end', () => {
 			reloaded,
 			savedGame,
 			savedRound,
-			"One more question",
+			"Follow-up inspection",
 			() => {},
 		);
 		assert.equal(savedRound.reviewStatus, "idle", savedRound.error);
-		let log = (await readFile(join(root, "coach", "calls.jsonl"), "utf8"))
-			.trim()
-			.split("\n")
-			.map((line) => JSON.parse(line));
-		assert.equal(log[2].args.includes("-i"), false);
-		assert.match(log[2].prompt, /No more images can be requested/);
-		await review(reloaded, savedGame, savedRound, "request-again", () => {});
+		assert.equal(savedRound.coachImages?.ids.length, 13);
+		assert.equal(savedRound.coachImages?.crops?.length, 1);
+		log = await calls();
+		assert.equal(log.length, 6);
+		assert.match(
+			log[3].prompt,
+			/Inspection passes remaining for this question: 2/,
+		);
+		assert.equal(log[3].args.includes("batch-thread"), true);
+		assert.equal(log[3].args.filter((a: string) => a === "-i").length, 0);
+
+		await review(reloaded, savedGame, savedRound, "unseen-zoom", () => {});
 		assert.equal(savedRound.reviewStatus, "error");
-		assert.match(savedRound.error ?? "", /already been used/);
-		log = (await readFile(join(root, "coach", "calls.jsonl"), "utf8"))
-			.trim()
-			.split("\n")
-			.map((line) => JSON.parse(line));
-		assert.equal(log.length, 4);
+		assert.match(savedRound.error ?? "", /full view before/);
+		assert.equal((await calls()).length, 7);
+
+		await review(reloaded, savedGame, savedRound, "ignore-limit", () => {});
+		assert.equal(savedRound.reviewStatus, "error");
+		assert.match(savedRound.error ?? "", /too_big/);
+		assert.equal((await calls()).length, 10);
+		reloaded.delete("batch-test");
+		assert.deepEqual(await readdir(join(root, "images")), []);
 	} finally {
 		if (oldExecutable) process.env.GEOCOACH_CODEX = oldExecutable;
 		else delete process.env.GEOCOACH_CODEX;

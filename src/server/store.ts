@@ -86,9 +86,13 @@ export class Store {
 	delete(id: string) {
 		const game = this.game(id);
 		if (!game) return;
-		for (const round of game.rounds)
-			for (const capture of round.captures)
-				rmSync(join(this.root, "images", capture.file), { force: true });
+		for (const round of game.rounds) {
+			for (const image of [
+				...round.captures,
+				...(round.coachImages?.crops ?? []),
+			])
+				rmSync(join(this.root, "images", image.file), { force: true });
+		}
 		this.games = this.games.filter((g) => g.id !== id);
 		this.save();
 	}
