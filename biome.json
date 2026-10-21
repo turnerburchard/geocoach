@@ -1,0 +1,12 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.2.6/schema.json",
+	"files": { "includes": ["src/**", "scripts/**", "tests/**"] },
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"a11y": { "noSvgWithoutTitle": "off" },
+			"security": { "noDangerouslySetInnerHtml": "off" }
+		}
+	}
+}
